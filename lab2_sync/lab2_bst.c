@@ -1,8 +1,8 @@
 /*
 *	Operating System Lab
 *	    Lab2 (Synchronization)
-*	    Student id : 
-*	    Student name : 
+*	    Student id : 32161149
+*	    Student name : kim chan hwi
 *
 *   lab2_bst.c :
 *       - thread-safe bst code.
@@ -16,139 +16,422 @@
 #include <assert.h>
 #include <pthread.h>
 #include <string.h>
-
 #include "lab2_sync_types.h"
 
-/*
- * TODO
- *  Implement funtction which traverse BST in in-order
- *  
- *  @param lab2_tree *tree  : bst to print in-order. 
- *  @return                 : status (success or fail)
- */
+void inorder(lab2_node *root) {
+	if(root) {
+	inorder(root->left);
+//	printf("%d ",root->key);
+	inorder(root->right);
+	}
+}
+
 int lab2_node_print_inorder(lab2_tree *tree) {
-    // You need to implement lab2_node_print_inorder function.
+	inorder(tree->root);	
 }
 
-/*
- * TODO
- *  Implement function which creates struct lab2_tree
- *  ( refer to the ./include/lab2_sync_types.h for structure lab2_tree )
- * 
- *  @return                 : bst which you created in this function.
- */
 lab2_tree *lab2_tree_create() {
-    // You need to implement lab2_tree_create function.
+    lab2_tree *tmp=(lab2_tree *)malloc(sizeof(lab2_tree));
+    tmp->root=NULL;
+    pthread_mutex_init(&tmp->tree_lock,NULL);
+    return tmp;
 }
 
-/*
- * TODO
- *  Implement function which creates struct lab2_node
- *  ( refer to the ./include/lab2_sync_types.h for structure lab2_node )
- *
- *  @param int key          : bst node's key to creates
- *  @return                 : bst node which you created in this function.
- */
-lab2_node * lab2_node_create(int key) {
-    // You need to implement lab2_node_create function.
+lab2_node *lab2_node_create(int key) {
+    lab2_node *tmp=(lab2_node *)malloc(sizeof(lab2_node));
+    tmp->left=tmp->right=NULL;
+    tmp->key=key;
+    tmp->end=0;
+    pthread_mutex_init(&tmp->node_lock,NULL);
+    return tmp;
 }
 
-/* 
- * TODO
- *  Implement a function which insert nodes from the BST. 
- *  
- *  @param lab2_tree *tree      : bst which you need to insert new node.
- *  @param lab2_node *new_node  : bst node which you need to insert. 
- *  @return                 : satus (success or fail)
- */
-int lab2_node_insert(lab2_tree *tree, lab2_node *new_node){
-    // You need to implement lab2_node_insert function.
-
+int lab2_node_insert(lab2_tree *tree, lab2_node *new_node) {
+   lab2_node *cur=tree->root;
+   lab2_node *pre=NULL;
+    
+   if(!cur) { 
+	   tree->root=new_node;
+	   return 0;
+   }
+   while(cur) {		//find appropriate position
+	if(new_node->key==cur->key) return -1;            //when there exist same key 
+	pre=cur;
+	if(new_node->key < cur->key) cur=cur->left;
+        else if(new_node->key > cur->key) cur=cur->right;	
+   }
+			/*now cur is null*/	
+   if(new_node->key < pre->key)
+     pre->left=new_node;
+   else
+     pre->right=new_node;
+return 0;
 }
 
-/* 
- * TODO
- *  Implement a function which insert nodes from the BST in fine-garined manner.
- *
- *  @param lab2_tree *tree      : bst which you need to insert new node in fine-grained manner.
- *  @param lab2_node *new_node  : bst node which you need to insert. 
- *  @return                     : status (success or fail)
- */
-int lab2_node_insert_fg(lab2_tree *tree, lab2_node *new_node){
-      // You need to implement lab2_node_insert_fg function.
+int lab2_node_insert_cg(lab2_tree *tree, lab2_node *new_node) {   
+   pthread_mutex_lock(&tree->tree_lock);	
+   lab2_node *cur=tree->root;
+   lab2_node *pre=NULL;
+   int flag=0;
+
+   if(!cur) { 
+	tree->root=new_node;
+	flag=1;
+   }
+
+    while(!flag&&cur) {         //find appropriate position        
+      if(new_node->key==cur->key) {             //when there exist same key	
+        flag=1;
+	break;
+      }
+        pre=cur;
+	if(new_node->key < cur->key) cur=cur->left;
+        else if(new_node->key > cur->key) cur=cur->right;
+   }
+    	if(!flag) {
+            if(new_node->key < pre->key)
+              pre->left=new_node;
+            else
+              pre->right=new_node; 
+	}
+pthread_mutex_unlock(&tree->tree_lock);
+return flag==1 ? -1 : 0;
 }
 
-/* 
- * TODO
- *  Implement a function which insert nodes from the BST in coarse-garined manner.
- *
- *  @param lab2_tree *tree      : bst which you need to insert new node in coarse-grained manner.
- *  @param lab2_node *new_node  : bst node which you need to insert. 
- *  @return                     : status (success or fail)
- */
-int lab2_node_insert_cg(lab2_tree *tree, lab2_node *new_node){
-    // You need to implement lab2_node_insert_cg function.
+int lab2_node_insert_fg(lab2_tree *tree, lab2_node *new_node) {
+   if(!tree->root) {
+	tree->root=new_node;
+	return 0;
+   }
+
+   lab2_node *cur=tree->root;
+   lab2_node *pre=NULL;
+   
+   pthread_mutex_lock(&cur->node_lock);
+   
+   while(cur) {         //find appropriate position
+	   if(new_node->key==cur->key) {     //when there exist same key              
+		if(pre) pthread_mutex_unlock(&pre->node_lock);
+	   	pthread_mutex_unlock(&cur->node_lock);
+		   return -1;
+	   }
+
+	if(pre) pthread_mutex_unlock(&pre->node_lock);
+        pre=cur;
+	if(new_node->key < cur->key) cur=cur->left;
+        else if(new_node->key > cur->key) cur=cur->right;
+        if(cur) pthread_mutex_lock(&cur->node_lock);
+   }
+   
+   if(new_node->key < pre->key)
+     pre->left=new_node;
+   else
+     pre->right=new_node;     	  
+     pthread_mutex_unlock(&pre->node_lock);	 
+return 0; 
 }
 
-/* 
- * TODO
- *  Implement a function which remove nodes from the BST.
- *
- *  @param lab2_tree *tree  : bst tha you need to remove node from bst which contains key.
- *  @param int key          : key value that you want to delete. 
- *  @return                 : status (success or fail)
- */
 int lab2_node_remove(lab2_tree *tree, int key) {
-    // You need to implement lab2_node_remove function.
+    
+    if(!tree->root) return -1;
+    
+    lab2_node *cur=tree->root;
+    lab2_node *pre=NULL;
+
+    while(cur) {
+	if(cur->key==key) break;
+	pre=cur;
+	if(cur->key < key) cur=cur->right;
+	else if(cur->key > key) cur=cur->left;
+    }
+
+    if(!cur) return -1;		//there is no key in bst		
+	
+    /*pre is parent of cur ,cur is pointing node to be deleted*/
+    if(cur->left==NULL && cur->right==NULL) {	//no child		
+	if(pre) {
+	  if(pre->left==cur)
+	    pre->left=NULL;
+	  else
+	    pre->right=NULL;
+	}
+    	
+	else
+	  tree->root=NULL;
+    free(cur);
+    }
+
+    else if(cur->left==NULL || cur->right==NULL) {	//one child
+	if(pre) {
+	  if(pre->left==cur) {
+	    if(cur->left==NULL)
+	      pre->left=cur->right;	    
+	    else
+	      pre->left=cur->left;
+	  }  
+	  else {	//pre->right==cur
+	    if(cur->left==NULL)
+	      pre->right=cur->right;
+	    else
+	      pre->right=cur->left;	    
+	  }
+	}
+        else	//when pre is NULL
+	tree->root=(cur->left!=NULL) ? cur->left : cur->right;	
+    free(cur);
+    }
+
+    else {		//two child
+    lab2_node *sub_min_pre=NULL;
+    lab2_node *sub_min=cur->right;
+
+    while(sub_min->left) {	//find a min key in the right subtree 
+	sub_min_pre=sub_min;
+	sub_min=sub_min->left;
+    }    
+    
+    cur->key=sub_min->key;
+
+    if(!sub_min_pre)		//cur is root
+      cur->right=sub_min->right;
+    else    
+    sub_min_pre->left=sub_min->right;	//there may exist right child on sub_min or null
+ 
+    free(sub_min);
+    }
+return 1;
 }
 
-/* 
- * TODO
- *  Implement a function which remove nodes from the BST in fine-grained manner.
- *
- *  @param lab2_tree *tree  : bst tha you need to remove node in fine-grained manner from bst which contains key.
- *  @param int key          : key value that you want to delete. 
- *  @return                 : status (success or fail)
- */
-int lab2_node_remove_fg(lab2_tree *tree, int key) {
-    // You need to implement lab2_node_remove_fg function.
-}
-
-
-/* 
- * TODO
- *  Implement a function which remove nodes from the BST in coarse-grained manner.
- *
- *  @param lab2_tree *tree  : bst tha you need to remove node in coarse-grained manner from bst which contains key.
- *  @param int key          : key value that you want to delete. 
- *  @return                 : status (success or fail)
- */
 int lab2_node_remove_cg(lab2_tree *tree, int key) {
-    // You need to implement lab2_node_remove_cg function.
+     		
+     if(!tree->root) return -1;
+
+     lab2_node *cur=tree->root;
+     lab2_node *pre=NULL;
+	
+     pthread_mutex_lock(&tree->tree_lock);
+
+     while(cur) {
+        if(cur->key==key) break;
+        pre=cur;
+        if(cur->key < key) cur=cur->right;
+        else if(cur->key > key) cur=cur->left;
+     }
+	
+    if(!cur) {
+      pthread_mutex_unlock(&tree->tree_lock);
+      return -1;
+    }
+    
+    if(cur->left==NULL && cur->right==NULL) {   //no child              
+        if(pre) {
+          if(pre->left==cur)
+            pre->left=NULL;
+          else
+            pre->right=NULL;
+        }
+
+        else
+          tree->root=NULL;
+    free(cur);
+    }
+
+    else if(cur->left==NULL || cur->right==NULL) {      //one child
+      if(pre) {
+        if(pre->left==cur) {
+          if(cur->left==NULL)
+            pre->left=cur->right;
+          else
+              pre->left=cur->left;
+        }
+        else {        //pre->right==cur
+          if(cur->left==NULL)
+            pre->right=cur->right;
+          else
+            pre->right=cur->left;
+        }
+      }
+      else    //when pre is NULL
+      tree->root=(cur->left!=NULL) ? cur->left : cur->right;
+    free(cur);
+    }
+
+    else {              //two child
+    lab2_node *sub_min_pre=NULL;
+    lab2_node *sub_min=cur->right;
+
+    while(sub_min->left) {      //find a max node in the right subtree 
+        sub_min_pre=sub_min;
+        sub_min=sub_min->left;
+    }
+
+    cur->key=sub_min->key;
+
+    if(!sub_min_pre)
+      cur->right=sub_min->right;
+    else
+      sub_min_pre->left=sub_min->right;    //there may exist right child on sub_min
+
+    free(sub_min);
+    }
+    pthread_mutex_unlock(&tree->tree_lock);
+return 1;
 }
 
+int lab2_node_remove_fg(lab2_tree *tree, int key) {
+    if(!tree->root) return -1;
+   	//lab2_node_delete(tree->root);	    
+    	
+	
+    
+   // printf("%d is deleted\n",key);
+    
+    pthread_mutex_lock(&tree->root->node_lock);
+   // printf("%p is root lock %d \n",tree->root,tree->root->key);
+    lab2_node *cur=tree->root;
+    lab2_node *pre=NULL;
+    
+    while(cur) {
+        if(cur->key==key) break;
+	if(pre) pthread_mutex_unlock(&pre->node_lock);// printf("%p %d is unlocked while pre\n",pre,pre->key);
+	
+	pre=cur;
+        if(cur->key < key) {
+	  cur=cur->right;
+	  if(cur) { pthread_mutex_lock(&cur->node_lock);	
+	//  printf("%p %d is locked cur->right lock \n",cur,cur->key);
+	  }
+	}
+        else if(cur->key > key) {
+	  cur=cur->left;
+	  if(cur) pthread_mutex_lock(&cur->node_lock);	
+	//  printf("%p %d is locked cur->left lock \n",cur,cur->key);  
+		
+    }
+}
+    if(!cur) {		//there is no key in tree
+      if(pre) {
+	if(pre->key<0) pre->key++; //make end condition, last node must be deleted after all unlock	
+	pthread_mutex_unlock(&pre->node_lock);      	
+   //     printf("%p %d is unlocked pre\n",pre,pre->key);
+		  return -1;
+	}
+    }
 
-/*
- * TODO
- *  Implement function which delete struct lab2_tree
- *  ( refer to the ./include/lab2_sync_types.h for structure lab2_node )
- *
- *  @param lab2_tree *tree  : bst which you want to delete. 
- *  @return                 : status(success or fail)
- */
+    if(cur->left==NULL && cur->right==NULL) {   //no child              
+	if(pre) {
+          if(pre->left==cur)
+            pre->left=NULL;
+          else
+            pre->right=NULL;
+	  pthread_mutex_unlock(&cur->node_lock);
+	 // printf("%p %d is unlocked no child cur\n",cur,cur->key);
+	  lab2_node_delete(cur);
+	  pthread_mutex_unlock(&pre->node_lock);
+	//   printf("%p %d is unlocked no child pre\n",pre,pre->key);
+	}
+
+        if(!pre) {
+	tree->root->key=-100;
+	pthread_mutex_unlock(&cur->node_lock);	
+	// printf("%p %d is unlocked no child cur when pre null\n",cur,cur->key);
+    	}
+   // printf("no child exit\n");
+    }
+
+    else if(cur->left==NULL || cur->right==NULL) {      //one child
+	 if(pre) {
+           if(pre->left==cur) {
+             if(cur->left==NULL)
+               pre->left=cur->right;
+             else
+               pre->left=cur->left;
+           }
+	
+          else {        //pre->right==cur
+            if(cur->left==NULL)
+              pre->right=cur->right;
+            else
+              pre->right=cur->left;
+          }
+	  pthread_mutex_unlock(&cur->node_lock);
+	//   printf("%p %d is unlocked cur one child\n",cur,cur->key);
+	  lab2_node_delete(cur);
+	  pthread_mutex_unlock(&pre->node_lock); 
+	//   printf("%p %d is unlocked pre one child\n",pre,pre->key);
+	 }
+
+        if(!pre) {     //when pre is NULL
+	  if(cur->left==NULL) {		
+	    lab2_node *tmp=cur->right;
+	    cur->left=tmp->left;		
+	    cur->key=tmp->key;
+	    cur->right=tmp->right;
+	   lab2_node_delete(tmp);
+	   pthread_mutex_unlock(&cur->node_lock);
+	  }
+	  else {
+	     lab2_node *tmp=cur->left;
+	     cur->right=tmp->right;
+	     cur->key=tmp->key;
+	     cur->left=tmp->left;
+	    lab2_node_delete(tmp);
+	     pthread_mutex_unlock(&cur->node_lock);
+	  }  	 
+     //   printf("%p %d is unlocked one child when pre null\n",cur,cur->key);	
+	}	
+    }
+
+    else {              //two child
+    lab2_node *sub_min_pre=NULL;
+    lab2_node *sub_min=cur->right;
+    
+    pthread_mutex_lock(&sub_min->node_lock);
+   // printf("%p %d is locked sub_min two child when sub_min->left null\n",sub_min,sub_min->key);
+    
+    while(sub_min->left) {      //find a max node in the right subtree 
+	if(sub_min_pre) pthread_mutex_unlock(&sub_min_pre->node_lock);
+	  //     	printf("%p %d is unloced sub_min_pre\n",sub_min_pre,sub_min_pre->key);	
+	sub_min_pre=sub_min;
+	sub_min=sub_min->left;
+	pthread_mutex_lock(&sub_min->node_lock);
+    	//printf("%p %d is locked sub_min \n",sub_min,sub_min->key);	
+    }
+
+    cur->key=sub_min->key;
+
+    if(!sub_min_pre) 
+      cur->right=sub_min->right;
+
+    else 
+      sub_min_pre->left=sub_min->right;    //there may exist right child on sub_min
+      
+    if(pre) pthread_mutex_unlock(&pre->node_lock); // printf("%p %d is unlocked pre two child\n",pre,pre->key);
+    
+    pthread_mutex_unlock(&sub_min->node_lock);
+    // printf("%p %d is unlocked sub_min two child\n",sub_min,sub_min->key);
+    lab2_node_delete(sub_min);	    
+    if(sub_min_pre) pthread_mutex_unlock(&sub_min_pre->node_lock);
+	   // printf("%p %d is unlocked sub_min_pre two child \n",sub_min_pre,sub_min_pre->key); 
+    pthread_mutex_unlock(&cur->node_lock); 
+    // printf("%p %d is unlocked cur two child\n",cur,cur->key);
+//	printf("two child exit\n");
+    
+}
+return 1;
+}
+
 void lab2_tree_delete(lab2_tree *tree) {
-    // You need to implement lab2_tree_delete function.
+
+	while(tree->root)  	//remove all nodes
+	lab2_node_remove(tree,tree->root->key);
+
+	free(tree);
 }
 
-/*
- * TODO
- *  Implement function which delete struct lab2_node
- *  ( refer to the ./include/lab2_sync_types.h for structure lab2_node )
- *
- *  @param lab2_tree *tree  : bst node which you want to remove. 
- *  @return                 : status(success or fail)
- */
 void lab2_node_delete(lab2_node *node) {
-    // You need to implement lab2_node_delete function.
+	node->left=node->right=NULL;
+        node->key=0;
+	free(node);	
 }
 
