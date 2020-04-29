@@ -21,7 +21,7 @@
 void inorder(lab2_node *root) {
 	if(root) {
 	inorder(root->left);
-//	printf("%d ",root->key);
+	//printf("%d ",root->key);
 	inorder(root->right);
 	}
 }
@@ -41,7 +41,6 @@ lab2_node *lab2_node_create(int key) {
     lab2_node *tmp=(lab2_node *)malloc(sizeof(lab2_node));
     tmp->left=tmp->right=NULL;
     tmp->key=key;
-    tmp->end=0;
     pthread_mutex_init(&tmp->node_lock,NULL);
     return tmp;
 }
@@ -54,8 +53,8 @@ int lab2_node_insert(lab2_tree *tree, lab2_node *new_node) {
 	   tree->root=new_node;
 	   return 0;
    }
-   while(cur) {		//find appropriate position
-	if(new_node->key==cur->key) return -1;            //when there exist same key 
+   while(cur) {	 //find appropriate position
+	if(new_node->key==cur->key) return -1;    //when there exist same key 
 	pre=cur;
 	if(new_node->key < cur->key) cur=cur->left;
         else if(new_node->key > cur->key) cur=cur->right;	
@@ -99,7 +98,7 @@ return flag==1 ? -1 : 0;
 }
 
 int lab2_node_insert_fg(lab2_tree *tree, lab2_node *new_node) {
-   if(!tree->root) {
+   if(!tree->root) {	//only first thread execute this instruction
 	tree->root=new_node;
 	return 0;
    }
@@ -110,7 +109,7 @@ int lab2_node_insert_fg(lab2_tree *tree, lab2_node *new_node) {
    pthread_mutex_lock(&cur->node_lock);
    
    while(cur) {         //find appropriate position
-	   if(new_node->key==cur->key) {     //when there exist same key              
+	   if(new_node->key==cur->key) {     //when there exist same key       
 		if(pre) pthread_mutex_unlock(&pre->node_lock);
 	   	pthread_mutex_unlock(&cur->node_lock);
 		   return -1;
@@ -279,43 +278,32 @@ return 1;
 }
 
 int lab2_node_remove_fg(lab2_tree *tree, int key) {
-    if(!tree->root) return -1;
-   	//lab2_node_delete(tree->root);	    
-    	
-	
-    
-   // printf("%d is deleted\n",key);
-    
+    if(!tree->root) return -1;	    
+
     pthread_mutex_lock(&tree->root->node_lock);
-   // printf("%p is root lock %d \n",tree->root,tree->root->key);
+
     lab2_node *cur=tree->root;
     lab2_node *pre=NULL;
-    
+
     while(cur) {
         if(cur->key==key) break;
-	if(pre) pthread_mutex_unlock(&pre->node_lock);// printf("%p %d is unlocked while pre\n",pre,pre->key);
+	if(pre) pthread_mutex_unlock(&pre->node_lock);
 	
 	pre=cur;
         if(cur->key < key) {
 	  cur=cur->right;
-	  if(cur) { pthread_mutex_lock(&cur->node_lock);	
-	//  printf("%p %d is locked cur->right lock \n",cur,cur->key);
+	  if(cur)  pthread_mutex_lock(&cur->node_lock);	
 	  }
-	}
+	
         else if(cur->key > key) {
 	  cur=cur->left;
-	  if(cur) pthread_mutex_lock(&cur->node_lock);	
-	//  printf("%p %d is locked cur->left lock \n",cur,cur->key);  
-		
-    }
-}
+	  if(cur) pthread_mutex_lock(&cur->node_lock);		
+        }
+   }
+
     if(!cur) {		//there is no key in tree
-      if(pre) {
-	if(pre->key<0) pre->key++; //make end condition, last node must be deleted after all unlock	
-	pthread_mutex_unlock(&pre->node_lock);      	
-   //     printf("%p %d is unlocked pre\n",pre,pre->key);
-		  return -1;
-	}
+      if(pre) pthread_mutex_unlock(&pre->node_lock);  
+    return -1;
     }
 
     if(cur->left==NULL && cur->right==NULL) {   //no child              
@@ -325,18 +313,15 @@ int lab2_node_remove_fg(lab2_tree *tree, int key) {
           else
             pre->right=NULL;
 	  pthread_mutex_unlock(&cur->node_lock);
-	 // printf("%p %d is unlocked no child cur\n",cur,cur->key);
 	  lab2_node_delete(cur);
 	  pthread_mutex_unlock(&pre->node_lock);
-	//   printf("%p %d is unlocked no child pre\n",pre,pre->key);
 	}
 
         if(!pre) {
-	tree->root->key=-100;
+	tree->root=NULL;
 	pthread_mutex_unlock(&cur->node_lock);	
-	// printf("%p %d is unlocked no child cur when pre null\n",cur,cur->key);
-    	}
-   // printf("no child exit\n");
+    	lab2_node_delete(cur);
+	}
     }
 
     else if(cur->left==NULL || cur->right==NULL) {      //one child
@@ -354,31 +339,28 @@ int lab2_node_remove_fg(lab2_tree *tree, int key) {
             else
               pre->right=cur->left;
           }
-	  pthread_mutex_unlock(&cur->node_lock);
-	//   printf("%p %d is unlocked cur one child\n",cur,cur->key);
+	  pthread_mutex_unlock(&cur->node_lock);	
 	  lab2_node_delete(cur);
 	  pthread_mutex_unlock(&pre->node_lock); 
-	//   printf("%p %d is unlocked pre one child\n",pre,pre->key);
 	 }
 
-        if(!pre) {     //when pre is NULL
+        if(!pre) {     //when pre is NULL, root node must not be deleted because of node_lock. therefore copy must be done
 	  if(cur->left==NULL) {		
 	    lab2_node *tmp=cur->right;
 	    cur->left=tmp->left;		
 	    cur->key=tmp->key;
 	    cur->right=tmp->right;
-	   lab2_node_delete(tmp);
-	   pthread_mutex_unlock(&cur->node_lock);
+	    lab2_node_delete(tmp);
+	    pthread_mutex_unlock(&cur->node_lock);
 	  }
 	  else {
-	     lab2_node *tmp=cur->left;
-	     cur->right=tmp->right;
-	     cur->key=tmp->key;
-	     cur->left=tmp->left;
+	    lab2_node *tmp=cur->left;
+	    cur->right=tmp->right;
+	    cur->key=tmp->key;
+	    cur->left=tmp->left;
 	    lab2_node_delete(tmp);
-	     pthread_mutex_unlock(&cur->node_lock);
-	  }  	 
-     //   printf("%p %d is unlocked one child when pre null\n",cur,cur->key);	
+	    pthread_mutex_unlock(&cur->node_lock);
+	  }  	 	
 	}	
     }
 
@@ -387,15 +369,13 @@ int lab2_node_remove_fg(lab2_tree *tree, int key) {
     lab2_node *sub_min=cur->right;
     
     pthread_mutex_lock(&sub_min->node_lock);
-   // printf("%p %d is locked sub_min two child when sub_min->left null\n",sub_min,sub_min->key);
     
     while(sub_min->left) {      //find a max node in the right subtree 
 	if(sub_min_pre) pthread_mutex_unlock(&sub_min_pre->node_lock);
-	  //     	printf("%p %d is unloced sub_min_pre\n",sub_min_pre,sub_min_pre->key);	
+	  	
 	sub_min_pre=sub_min;
 	sub_min=sub_min->left;
-	pthread_mutex_lock(&sub_min->node_lock);
-    	//printf("%p %d is locked sub_min \n",sub_min,sub_min->key);	
+	pthread_mutex_lock(&sub_min->node_lock);	
     }
 
     cur->key=sub_min->key;
@@ -406,26 +386,20 @@ int lab2_node_remove_fg(lab2_tree *tree, int key) {
     else 
       sub_min_pre->left=sub_min->right;    //there may exist right child on sub_min
       
-    if(pre) pthread_mutex_unlock(&pre->node_lock); // printf("%p %d is unlocked pre two child\n",pre,pre->key);
+    if(pre) pthread_mutex_unlock(&pre->node_lock); 
     
     pthread_mutex_unlock(&sub_min->node_lock);
-    // printf("%p %d is unlocked sub_min two child\n",sub_min,sub_min->key);
     lab2_node_delete(sub_min);	    
-    if(sub_min_pre) pthread_mutex_unlock(&sub_min_pre->node_lock);
-	   // printf("%p %d is unlocked sub_min_pre two child \n",sub_min_pre,sub_min_pre->key); 
-    pthread_mutex_unlock(&cur->node_lock); 
-    // printf("%p %d is unlocked cur two child\n",cur,cur->key);
-//	printf("two child exit\n");
-    
+   if(sub_min_pre) pthread_mutex_unlock(&sub_min_pre->node_lock);
+	    
+    pthread_mutex_unlock(&cur->node_lock);    
 }
 return 1;
 }
 
 void lab2_tree_delete(lab2_tree *tree) {
-
 	while(tree->root)  	//remove all nodes
 	lab2_node_remove(tree,tree->root->key);
-
 	free(tree);
 }
 
