@@ -1,8 +1,8 @@
 /*
 *	DKU Operating System Lab
 *	    Lab2 (Synchronization)
-*	    Student id : 
-*	    Student name : 
+*	    Student id : 32161149
+*	    Student name : kim chan hwi
 *
 *   lab1_sched.c :
 *       - Lab2 header file.
@@ -27,12 +27,10 @@
  *  int key                 : node key value 
  */
 typedef struct lab2_node {
-
-    pthread_mutex_t mutex;
+    pthread_mutex_t node_lock;
     struct lab2_node *left;
     struct lab2_node *right;
     int key;
-
 } lab2_node;
 
 /*
@@ -42,6 +40,7 @@ typedef struct lab2_node {
  */
 typedef struct lab2_tree {
     struct lab2_node *root;
+    pthread_mutex_t tree_lock;
 } lab2_tree;
 
 /* 
@@ -56,14 +55,14 @@ typedef struct thread_arg{
     int *data_set;
     int start;
     int end;
-}thread_arg;
+} thread_arg;
 
 /* 
  * lab2_bst.c related functions 
  * TODO
  *  You need to implement these functions. 
  */
-int lab2_node_print_inorder(lab2_tree *tree);
+int lab2_node_print_inorder(lab2_tree *tree);	
 lab2_tree *lab2_tree_create();
 lab2_node *lab2_node_create(int key);
 int lab2_node_insert(lab2_tree *tree, lab2_node *new_node);
@@ -74,30 +73,7 @@ int lab2_node_remove_fg(lab2_tree *tree, int key);
 int lab2_node_remove_cg(lab2_tree *tree, int key);
 void lab2_tree_delete(lab2_tree *tree);
 void lab2_node_delete(lab2_node *node);
-
-
-/*
- * Lab2 bonus(lab2_bonus.c)
- *  Spin Lock implementation in assembly level. 
- *
- * lab2_bonus.c related functions  
- */
-
-/* assembly implementation example functions */
-void atomic_add( int * value, int inc_val);
-void atomic_sub( int * value, int dec_val);
-void atomic_inc( int * value);
-void atomic_dec( int * value);
-
-/*
- * lab2_bonus.c related functions 
- * TODO
- *  You need to implement these function.
- */
-void lab2_spin_lock(int volatile *lock);
-void lab2_spin_unlock(int volatile *lock);
-
-
+void inorder(lab2_node *root);		//driver
 /* lab2_timeval.c related function */
 double get_timeval(struct timeval *tv, struct timeval *tv_end);
 
